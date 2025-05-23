@@ -2,20 +2,9 @@
 # Customer Contact Manager (CCM)
 
 ## 📝 Description
-
-This Django-based web application was created by me for as part of the coursework for the 'Software Engineering and DevOps' module. It was developed in Django and SQLite and utilises several libraries such as Bootstrap and Django Rest Framework.
-
-It is designed to be a simple contact manager for the rejected payments team at the Department of Work and Pensions. This team handles any payments that have been rejected by the bank and need to be manually processed by contacting citizens to request updated contact details or give further instructions on how to proceed. 
-The team needs to be able to keep track of the contacts they have made with customers and the outcome of those contacts.
+This Django-based web application was developed for managing customer contact records related to rejected payments within the Department for Work and Pensions (DWP). Originally created for coursework, it has been enhanced to align with modern **Software Engineering** and **DevOps** practices.
 
 The app includes secure user authentication, record creation and editing, audit trail fields (e.g., `created_by`), and protections aligned with OWASP Top 10 vulnerabilities.
-
----
-Source code :
-    [https://github.com/catiecord/assignment_ccm](https://github.com/catiecord/assignment_ccm)
-
-Working demonstration:
-    [https://catcord5.pythonanywhere.com/](https://catcord5.pythonanywhere.com/)
 
 ---
 
@@ -24,7 +13,7 @@ Working demonstration:
 ### Requirements
 - Python 3.8+
 - Django 3.2+
-- SQLite 
+- SQLite (default, for ease of setup)
 
 ### Setup Steps
 
@@ -51,52 +40,8 @@ python manage.py runserver
 ```
 
 ---
-## 🚀 Usage
 
-The application is simple and intuitive. Users can navigate using the top navigation bar to manage contacts.
-
-### Regular Users Can:
-- Add a new record
-- View all records
-- View a single record
-- Update a record
-- Search for a record
-
-### Admin Users Can:
-- Add a new record
-- View all records
-- View a single record
-- Update a record
-- Delete a record
-- Search for a record
-- View all users
-- Activate and deactivate user accounts
-- Access audit logs for each record:
-  - Date and time of creation or update
-  - User who created or updated the record
-
----
-## 🗂 Models
-
-The application uses a single model, `Record`, with the following fields:
-
-- `created_at`
-- `created_by`
-- `payment_reference`
-- `first_name`
-- `last_name`
-- `contact_method`
-- `contact_date`
-- `contact_status`
-- `notes`
-- `updated_by`
-- `updated_at`
-
-These fields help store contact details and track changes made by users.
-
----
-
-## 🔐 Security 
+## 🔐 Security Enhancements
 
 This application includes the following OWASP Top 10 protections:
 
@@ -111,14 +56,12 @@ Test cases and validation messages confirm these protections are effective.
 
 ## 🧪 Testing
 
-The application has been tested using Django’s built-in test framework.
+To run basic tests (if included):
 
-**Tests include:**
-- Form validation
-- Model creation and updates
-- URL routing
-- View access control
-
-### To run tests:
 ```bash
 python manage.py test
+```
+
+You may also see test coverage in `/htmlcov` if `coverage.py` was used.
+
+---
