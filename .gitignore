@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+*.sqlite3
+db.sqlite3
+
+# VS Code
+.vscode/
+
+# Django
+*.log
+media/
+staticfiles/
+
+# Coverage reports
+htmlcov/
+.coverage
+
+# Environment
+.env

@@ -1,0 +1,54 @@
+<nav class="navbar navbar-expand-lg" style="background-color: #A3C1AD">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{% url 'home' %}">Payments CCM</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          {% if user.is_authenticated %}
+            {% if user.is_staff %}
+                <li class="nav-item">
+                    <strong><a class="nav-link">Administrator</a></strong>
+                </li>
+                 <li class="nav-item">
+                    <a class="nav-link" href="{% url 'user_management' %}">User Management</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'audit_logs' %}">Audit logs</a>
+                </li>
+
+
+
+            {% endif %}
+          {% if not user.is_staff %}
+                <li class="nav-item">
+                    <strong><a class="nav-link">Staff</a></strong>
+                </li>
+            {% endif %}
+          <li class="nav-item">
+              <a class="nav-link" href="{% url 'home' %}">Record list</a>
+          </li>
+          <li class="nav-item">
+              <a class="nav-link" href="{% url 'add_record' %}">Add record</a>
+          </li>
+          <li class="nav-item">
+              <a class="nav-link" href="{% url 'logout' %}">Logout</a>
+          </li>
+          {% else %}
+          <li class="nav-item">
+              <a class="nav-link" href="{% url 'register' %}">Register</a>
+          </li>
+          <li class="nav-item">
+              <a class="nav-link" href="{% url 'home' %}">Login</a>
+          </li>
+          {% endif %}
+      </ul>
+        <form class="d-flex" role="search" method="POST" action="{% url 'search_results' %}">
+            {% csrf_token %}
+        <input class="form-control me-2" type="search" placeholder="Search Records" name="searched">
+        <button class="btn btn-success" type="submit">Search</button>
+      </form>
+    </div>
+  </div>
+</nav>

@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="col-md-6 offset-md-3">
+<div class="card">
+  <h5 class="card-header">Payment reference - {{ record.payment_reference }}</h5>
+  <div class="card-body">
+      <h5 class="card-title">{{ record.first_name }} {{ record.last_name }}</h5>
+      <strong>Contact date:</strong><p class="card-text"> {{ record.contact_date }}</p>
+      <strong>Contact method:</strong><p class="card-text"> {{ record.contact_method }}</p>
+      <strong>Contact status:</strong><p class="card-text"> {{ record.contact_status }}</p>
+      <strong>Notes:</strong><p class="card-text"> {{ record.notes }}</p>
+      <a href="{% url 'home' %}" class="btn btn-outline-primary">Back</a>
+      <a href="{% url 'update_record' record.id %}" class="btn btn-primary">Update record</a>
+      {% if user.is_staff %}
+      <a href="{% url 'delete_record' record.id %}" class="btn btn-danger">Delete</a>
+      {% endif %}
+  </div>
+</div>
+</div>
+{% endblock %}
