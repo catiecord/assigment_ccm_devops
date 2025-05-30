@@ -10,12 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    services:
-      sqlite:
-        image: nouchka/sqlite3
-        ports:
-          - 5432:5432
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
@@ -30,11 +24,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run Django tests
+    - name: Run Django migrations and tests
       run: |
         python manage.py migrate --noinput
         python manage.py test
-          - name: Security check with Bandit
+    - name: Run Bandit security scan
       run: |
         pip install bandit
         bandit -r .
