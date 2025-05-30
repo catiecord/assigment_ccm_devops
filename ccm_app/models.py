@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 
 # This is the model file for the ccm_app app.
@@ -16,7 +17,7 @@ class Record(models.Model):
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
     contact_method = models.CharField(max_length=60)
-    contact_date = models.DateTimeField()
+    contact_date = models.DateTimeField(default=timezone.now,)
     contact_status = models.CharField(max_length=60)
     notes = models.TextField()
     updated_by = models.CharField(max_length=50, null=True)

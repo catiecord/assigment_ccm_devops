@@ -1,5 +1,3 @@
-
-
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib import messages
@@ -14,24 +12,30 @@ logger = logging.getLogger('audit')
 # ----------------------------
 
 # Handles login logic with user existence and active status checks
+# Handles login logic with user existence and active status checks
 def handle_login(request):
     username = request.POST.get('username')
     password = request.POST.get('password')
-    user = authenticate(request, username=username, password=password)
 
-    if user:
-        if user.is_active:
-            login(request, user)
-            messages.success(request, 'You have been logged in!')
-        else:
-            messages.error(request, 'Account is inactive. Contact admin.')
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        messages.error(request, 'User does not exist.')
         return redirect('home')
+
+    if not user.is_active:
+        messages.error(request, 'Account is inactive. Contact admin.')
+        return redirect('home')
+
+    user = authenticate(request, username=username, password=password)
+    if user is not None:
+        login(request, user)
+        messages.success(request, 'You have been logged in!')
     else:
-        if not User.objects.filter(username=username).exists():
-            messages.error(request, 'User does not exist.')
-        else:
-            messages.error(request, 'Incorrect password. Please try again.')
-        return redirect('home')
+        messages.error(request, 'Incorrect password. Please try again.')
+
+    return redirect('home')
+
 
 # Displays all records or handles login via POST
 def home(request):
