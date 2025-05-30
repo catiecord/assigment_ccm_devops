@@ -2,6 +2,13 @@
 
 {% block content %}
 <h1 class="title">User Management</h1>
+  {% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+  {% endif %}
 <br>
 <div class="container">
     <table class="table table-striped table-hover text-center">
