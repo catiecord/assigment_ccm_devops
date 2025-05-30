@@ -108,7 +108,7 @@ def add_record(request):
             return redirect('records_list')
     else:
         form = RecordForm()
-    return render(request, 'ccm_app/add_record.html', {'form': form})
+    return render(request, 'add_record.html', {'form': form})
 
 @login_required
 def update_record(request, pk):
@@ -141,7 +141,7 @@ def delete_record(request, pk):
         )
         record.delete()
         return redirect('records_list')
-    return render(request, 'ccm_app/confirm_delete.html', {'record': record})
+    return render(request, 'confirm_delete.html', {'record': record})
 
 # ----------------------------
 # Admin & User Management
@@ -199,4 +199,4 @@ def search_results(request):
 @staff_member_required
 def audit_logs(request):
     logs = AuditLog.objects.order_by('-timestamp')
-    return render(request, 'ccm_app/audit_logs.html', {'logs': logs})
+    return render(request, 'audit_logs.html', {'logs': logs})
