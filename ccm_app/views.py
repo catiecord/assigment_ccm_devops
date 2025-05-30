@@ -1,9 +1,12 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, get_user_model
+from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .forms import SignUpForm, AddRecordForm, UpdateRecordForm, RecordForm
-from .models import Record
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import User
+from .forms import SignUpForm, AddRecordForm, UpdateRecordForm, RecordForm
+from .models import Record, AuditLog
+
 import logging
 logger = logging.getLogger('audit')
 
@@ -11,8 +14,6 @@ logger = logging.getLogger('audit')
 # Authentication and Homepage
 # ----------------------------
 
-# Handles login logic with user existence and active status checks
-# Handles login logic with user existence and active status checks
 def handle_login(request):
     username = request.POST.get('username')
     password = request.POST.get('password')
@@ -36,8 +37,6 @@ def handle_login(request):
 
     return redirect('home')
 
-
-# Displays all records or handles login via POST
 def home(request):
     records = Record.objects.all()
     if request.method == 'POST':
@@ -63,6 +62,11 @@ def register_user(request):
             authenticated_user = authenticate(username=user.username, password=form.cleaned_data['password1'])
             if authenticated_user:
                 login(request, authenticated_user)
+                AuditLog.objects.create(
+                    user=authenticated_user,
+                    action='REGISTER',
+                    description=f"User {user.username} registered"
+                )
                 messages.success(request, 'You have been registered! Welcome to the CCM App!')
                 return redirect('home')
             else:
@@ -80,86 +84,78 @@ def register_user(request):
 # Record Management
 # ----------------------------
 
+@login_required
 def payment_record(request, pk):
-    if request.user.is_authenticated:
-        pay_record = get_object_or_404(Record, id=pk)
-        return render(request, 'record.html', {'record': pay_record})
-    else:
-        messages.error(request, 'You must be logged in to view records!')
-        return redirect('home')
+    pay_record = get_object_or_404(Record, id=pk)
+    return render(request, 'record.html', {'record': pay_record})
 
+@login_required
 def add_record(request):
-    if not request.user.is_authenticated:
-        messages.error(request, 'You must be logged in to add records!')
-        return redirect('home')
+    if request.method == 'POST':
+        form = RecordForm(request.POST)
+        if form.is_valid():
+            record = form.save(commit=False)
+            record.created_by = request.user
+            record.updated_by = request.user.username
+            record.save()
 
-    form = RecordForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        record = form.save(commit=False)
-        record.created_by = request.user
-        record.save()
-        messages.success(request, 'Record has been added!')
-        return redirect('home')
-    elif request.method == 'POST':
-        messages.error(request, 'Error adding record - please try again...')
-    return render(request, 'add_record.html', {'form': form})
+            AuditLog.objects.create(
+                user=request.user,
+                action='CREATE',
+                description=f"Created record {record.payment_reference}"
+            )
 
+            return redirect('records_list')
+    else:
+        form = RecordForm()
+    return render(request, 'ccm_app/add_record.html', {'form': form})
+
+@login_required
 def update_record(request, pk):
-    if not request.user.is_authenticated:
-        messages.error(request, 'You must be logged in to update records!')
-        return redirect('home')
-
     current_record = get_object_or_404(Record, id=pk)
     form = RecordForm(request.POST or None, instance=current_record)
     if request.method == 'POST':
         if form.is_valid():
             form.save()
+
+            AuditLog.objects.create(
+                user=request.user,
+                action='UPDATE',
+                description=f"Updated record {current_record.payment_reference}"
+            )
+
             messages.success(request, 'Record has been updated!')
             return redirect('home')
         else:
             messages.error(request, 'Error updating record - please try again...')
     return render(request, 'update_record.html', {'form': form})
 
+@login_required
 def delete_record(request, pk):
-    if not request.user.is_authenticated:
-        messages.error(request, 'You must be logged in to delete records!')
-        return redirect('home')
-
-    if not request.user.is_staff:
-        messages.error(request, 'You must be an admin to delete records!')
-        return redirect('home')
-
-    record = get_object_or_404(Record, id=pk)
-    logger.info(f"{request.user} deleted record {record.id}")
-    record.delete()
-    messages.success(request, 'Record has been deleted!')
-    return redirect('home')
+    record = get_object_or_404(Record, pk=pk)
+    if request.method == 'POST':
+        AuditLog.objects.create(
+            user=request.user,
+            action='DELETE',
+            description=f"Deleted record {record.payment_reference}"
+        )
+        record.delete()
+        return redirect('records_list')
+    return render(request, 'ccm_app/confirm_delete.html', {'record': record})
 
 # ----------------------------
 # Admin & User Management
 # ----------------------------
 
+@login_required
+@staff_member_required
 def user_management(request):
-    if not request.user.is_authenticated:
-        messages.error(request, 'You must be logged in to view users!')
-        return redirect('home')
-
-    if not request.user.is_staff:
-        messages.error(request, 'You must be an admin to view users!')
-        return redirect('home')
-
     users = get_user_model().objects.all()
     return render(request, 'user_management.html', {'users': users})
 
+@login_required
+@staff_member_required
 def user_active_status(request, user_id):
-    if not request.user.is_authenticated:
-        messages.error(request, "You must be logged in to perform this action.")
-        return redirect("home")
-
-    if not request.user.is_staff:
-        messages.error(request, "You must be an admin to modify user status.")
-        return redirect("home")
-
     user_model = get_user_model()
     try:
         target_user = user_model.objects.get(pk=user_id)
@@ -174,6 +170,12 @@ def user_active_status(request, user_id):
     target_user.is_active = not target_user.is_active
     target_user.save()
 
+    AuditLog.objects.create(
+        user=request.user,
+        action='PROMOTE',
+        description=f"Toggled active status for user {target_user.username} to {target_user.is_active}"
+    )
+
     message = f"{target_user.username}'s account has been {'activated' if target_user.is_active else 'deactivated'}."
     messages.success(request, message)
     return redirect("user_management")
@@ -182,27 +184,19 @@ def user_active_status(request, user_id):
 # Search and Audit Logs
 # ----------------------------
 
+@login_required
 def search_results(request):
-    if not request.user.is_authenticated:
-        messages.error(request, 'You must be logged in to search records!')
-        return redirect('home')
-
     if request.method == 'POST':
         searched = request.POST.get('searched', '')
-        records = Record.objects.filter(first_name__icontains=searched) |                   Record.objects.filter(last_name__icontains=searched) |                   Record.objects.filter(payment_reference__icontains=searched)
+        records = Record.objects.filter(first_name__icontains=searched) | \
+                  Record.objects.filter(last_name__icontains=searched) | \
+                  Record.objects.filter(payment_reference__icontains=searched)
         return render(request, 'search_results.html', {'searched': searched, 'records': records})
 
     messages.error(request, 'Please use the search form to submit your query.')
     return redirect('home')
 
+@staff_member_required
 def audit_logs(request):
-    if not request.user.is_authenticated:
-        messages.error(request, 'You must be logged in to view the audit log!')
-        return redirect('home')
-
-    if not request.user.is_staff:
-        messages.error(request, 'You must be an admin to view the audit log!')
-        return redirect('home')
-
-    records = Record.objects.all()
-    return render(request, 'audit_logs.html', {'records': records})
+    logs = AuditLog.objects.order_by('-timestamp')
+    return render(request, 'ccm_app/audit_logs.html', {'logs': logs})
