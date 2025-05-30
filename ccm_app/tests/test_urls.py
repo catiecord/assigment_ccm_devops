@@ -17,7 +17,7 @@ class UrlsTest(TestCase):
         self.assertEqual(resolve(url).func, views.register_user)
 
     def test_payment_record_url(self):
-        url = reverse('record', args=[1])
+        url = reverse('payment_record', args=[1])
         self.assertEqual(resolve(url).func, views.payment_record)
 
     def test_delete_record_url(self):

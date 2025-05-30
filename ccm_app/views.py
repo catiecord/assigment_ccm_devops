@@ -17,6 +17,28 @@ logger = logging.getLogger('audit')
 def handle_login(request):
     username = request.POST.get('username')
     password = request.POST.get('password')
+
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        messages.error(request, 'User does not exist.')
+        return redirect('home')
+
+    if not user.is_active:
+        messages.error(request, 'Account is inactive. Contact admin.')
+        return redirect('home')
+
+    user = authenticate(request, username=username, password=password)
+    if user is not None:
+        login(request, user)
+        messages.success(request, 'You have been logged in!')
+    else:
+        messages.error(request, 'Incorrect password. Please try again.')
+
+    return redirect('home')
+
+    username = request.POST.get('username')
+    password = request.POST.get('password')
     user = authenticate(request, username=username, password=password)
 
     if user:

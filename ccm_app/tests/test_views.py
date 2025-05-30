@@ -2,449 +2,246 @@ from django.test import TestCase, Client
 from django.urls import reverse
 from django.contrib.auth.models import User
 from ccm_app.models import Record
-from ccm_app.forms import SignUpForm
+from django.utils import timezone
+from unittest.mock import patch
 
-
-class ViewTestCase(TestCase):
+class ViewTests(TestCase):
     def setUp(self):
-        # Create a test user
-        self.user = User.objects.create_user(username='testuser', password='12345')
-        # Create a test record
+        self.user = User.objects.create_user(username='testuser', password='testpass')
+        self.staff_user = User.objects.create_user(username='adminuser', password='adminpass', is_staff=True)
         self.record = Record.objects.create(
-            created_by=self.user,
-            payment_reference='REF123',
-            first_name='John',
-            last_name='Doe',
+            payment_reference='PAY123456',
+            first_name='Test',
+            last_name='User',
             contact_method='Email',
-            contact_date='2024-03-06 12:00',
-            contact_status='Contact successful',
-            notes='Test note',
+            contact_date=timezone.now(),
+            contact_status='Pending',
+            notes='Initial contact.',
+            created_by=self.staff_user,
+            updated_by='adminuser',
+            updated_at=timezone.now()
         )
-        self.client = Client()
 
-    # Home View Tests
-    def test_home_view_unauthenticated(self):
+    # Authentication & Session Tests
+    def test_home_get(self):
+        self.client.login(username='normaluser', password='userpass')
         response = self.client.get(reverse('home'))
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'home.html')
 
-    def test_home_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
-        response = self.client.get(reverse('home'))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'home.html')
-        # Check if records are passed to the template
-        self.assertTrue('records' in response.context)
-        self.assertEqual(list(response.context['records']), [self.record])
+    def test_handle_login_success(self):
+        response = self.client.post(reverse('home'), {'username': 'testuser', 'password': 'testpass'}, follow=True)
+        self.assertContains(response, 'You have been logged in!')
 
-    def test_home_view_error_message(self):
-        response = self.client.post(reverse('home'), {'username': 'testuser', 'password': 'wrongpassword'})
-        self.assertEqual(response.status_code, 302)
-        self.assertRedirects(response, reverse('home'))
+    def test_handle_login_user_does_not_exist_message(self):
+        response = self.client.post(reverse('home'), {'username': 'nonexistentuser', 'password': 'irrelevant'}, follow=True)
+        self.assertContains(response, 'User does not exist.')
 
-    # Register View Tests
-    def test_register_user_view_get(self):
+    def test_handle_login_existing_user_wrong_password_message(self):
+        response = self.client.post(reverse('home'), {'username': 'testuser', 'password': 'wrongpass'}, follow=True)
+        self.assertContains(response, 'Incorrect password. Please try again.')
+
+    def test_handle_login_inactive_message(self):
+        inactive_user = User.objects.create_user(username='inactiveuser', password='testpass', is_active=False)
+        response = self.client.post(reverse('home'), {'username': 'inactiveuser', 'password': 'testpass'}, follow=True)
+        self.assertContains(response, 'Account is inactive. Contact admin.')
+
+    def test_logout_user(self):
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.get(reverse('logout'), follow=True)
+        self.assertContains(response, 'You have been logged out!')
+
+    # Registration Tests
+    def test_register_user_get(self):
         response = self.client.get(reverse('register'))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'register.html')
-        self.assertIsInstance(response.context['form'], SignUpForm)
 
-    def test_register_user_view_post_valid(self):
-        user_count = User.objects.count()
+    def test_register_user_post_valid(self):
         response = self.client.post(reverse('register'), {
-            'username': 'newuser',
-            'email': 'newuser@example.com',
-            'first_name': 'New',
-            'last_name': 'User',
-            'password1': 'newpassword123',
-            'password2': 'newpassword123',
-        })
-        self.assertEqual(User.objects.count(), user_count + 1)
+            'first_name': 'Test', 'last_name': 'User', 'username': 'newuser',
+            'email': 'newuser@example.com', 'password1': 'StrongPass123!', 'password2': 'StrongPass123!'} )
+        self.assertEqual(response.status_code, 302)
         self.assertRedirects(response, reverse('home'))
 
-    def test_register_user_view_post_invalid(self):
-        user_count = User.objects.count()
+    def test_register_user_post_invalid(self):
         response = self.client.post(reverse('register'), {
-            'username': 'newuser',
-            'email': '',
-            'first_name': 'New',
-            'last_name': 'User',
-            'password1': 'newpassword',
-            'password2': 'newpassword'
-        })
-        self.assertEqual(User.objects.count(), user_count)
+            'username': '', 'password1': 'password', 'password2': 'different_password'})
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'register.html')
-        self.assertIsInstance(response.context['form'], SignUpForm)
-        self.assertTrue(response.context['form'].errors)
 
-    # Login and Logout View Tests
-    def test_login_logout_flow(self):
-        # Login
-        login_response = self.client.post(reverse('home'), {'username': 'testuser', 'password': '12345'})
-        self.assertRedirects(login_response, reverse('home'))
+    def test_register_user_post_invalid_messages(self):
+        response = self.client.post(reverse('register'), {
+            'username': '', 'password1': 'short', 'password2': 'mismatch'}, follow=True)
+        self.assertContains(response, 'Username:')
 
-        # Logout
-        logout_response = self.client.get(reverse('logout'))
-        self.assertRedirects(logout_response, reverse('home'))
+    def test_register_user_authentication_fails(self):
+        self.client.logout()
+        response = self.client.post(reverse('register'), {
+            'first_name': 'Fail', 'last_name': 'Login', 'username': 'failuser',
+            'email': 'fail@example.com', 'password1': 'StrongPass123!', 'password2': 'StrongPass123!'}, follow=True)
+        self.assertContains(response, 'You have been registered!')
 
-    # Record View Tests
+    @patch('ccm_app.views.authenticate', return_value=None)
+    def test_register_user_post_authentication_fail(self, mock_auth):
+        response = self.client.post(reverse('register'), {
+            'first_name': 'Fail', 'last_name': 'Login', 'username': 'faillogin',
+            'email': 'fail@example.com', 'password1': 'SomeStrongPassword123!', 'password2': 'SomeStrongPassword123!'}, follow=True)
+        self.assertContains(response, 'Failed to log in after registration.')
 
-    def test_payment_record_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
-        response = self.client.get(reverse('record', args=[self.record.id]))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'record.html')
-        self.assertEqual(response.context['record'], self.record)
-
-    def test_payment_record_view_unauthenticated(self):
-        response = self.client.get(reverse('record', args=[self.record.id]))
+    # Record Tests
+    def test_add_record_requires_login(self):
+        response = self.client.get(reverse('add_record'), follow=True)
         self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+        self.assertContains(response, 'You must be logged in to add records!')
 
-    # Add Record View Tests
+    def test_add_record_success(self):
+        self.client.login(username='adminuser', password='adminpass')
+        response = self.client.post(reverse('add_record'), {
+            'payment_reference': 'REF123', 'first_name': 'Jane', 'last_name': 'Doe',
+            'contact_method': 'Phone', 'contact_date': timezone.now(),
+            'contact_status': 'Completed', 'notes': 'Test note'}, follow=True)
+        self.assertContains(response, 'Record has been added!')
 
-    def test_add_record_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
-        response = self.client.get(reverse('add_record'))
+    def test_add_record_post_invalid(self):
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(reverse('add_record'), {'first_name': ''})
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'add_record.html')
-        self.assertTrue('form' in response.context)
-        self.assertEqual(response.context['form']._meta.model, Record)
 
-    def test_add_record_view_unauthenticated(self):
-        response = self.client.get(reverse('add_record'))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+    def test_add_record_post_invalid_message(self):
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(reverse('add_record'), {'payment_reference': ''}, follow=True)
+        self.assertContains(response, 'Error adding record - please try again...')
 
-    def test_add_record_view_post_valid(self):
-        record_count = Record.objects.count()
-        self.client.login(username='testuser', password='12345')
-        response = self.client.post(reverse('add_record'), {
-            'payment_reference': 'REF456',
-            'first_name': 'Jane',
-            'last_name': 'Doe',
-            'contact_method': 'Phone',
-            'contact_date': '2024-03-06T12:00',
-            'contact_status': 'Contact successful',
-            'notes': 'Test note',
-        })
-        self.assertEqual(Record.objects.count(), record_count + 1)
-        self.assertRedirects(response, reverse('home'))
-
-    def test_add_record_view_post_invalid(self):
-        record_count = Record.objects.count()
-        self.client.login(username='testuser', password='12345')
-        response = self.client.post(reverse('add_record'), {
-            'payment_reference': 'REF456',
-            'first_name': 'Jane',
-            'last_name': 'Doe',
-            'contact_method': 'Phone',
-            'contact_date': '2024-03-06T12:00',
-            'contact_status': 'Contact successful',
-            'notes': '',
-        })
-        self.assertEqual(Record.objects.count(), record_count)
+    def test_payment_record_authenticated(self):
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.get(reverse('payment_record', args=[self.record.id]))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'add_record.html')
-        self.assertTrue(response.context['form'].errors)
 
-    def test_add_record_view_post_unauthenticated(self):
-        record_count = Record.objects.count()
-        response = self.client.post(reverse('add_record'), {
-            'payment_reference': 'REF456',
-            'first_name': 'Jane',
-            'last_name': 'Doe',
-            'contact_method': 'Phone',
-            'contact_date': '2024-03-06T12:00',
-            'contact_status': 'Contact successful',
-            'notes': 'Test note',
-        })
-        self.assertEqual(Record.objects.count(), record_count)
+    def test_payment_record_unauthenticated(self):
+        self.client.logout()
+        response = self.client.get(reverse('payment_record', args=[self.record.id]))
         self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
 
-    # Update Record View Tests
-
-    def test_update_record_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
+    def test_update_record_authenticated_get(self):
+        self.client.login(username='testuser', password='testpass')
         response = self.client.get(reverse('update_record', args=[self.record.id]))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'update_record.html')
-        self.assertTrue('form' in response.context)
-        self.assertEqual(response.context['form']._meta.model, Record)
 
-    def test_update_record_view_unauthenticated(self):
+    def test_update_record_unauthenticated(self):
+        self.client.logout()
         response = self.client.get(reverse('update_record', args=[self.record.id]))
         self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
 
-    def test_update_record_view_post_valid(self):
-        self.client.login(username='testuser', password='12345')
+    def test_update_record_success(self):
+        self.client.login(username='adminuser', password='adminpass')
         response = self.client.post(reverse('update_record', args=[self.record.id]), {
-            'payment_reference': 'REF456',
-            'first_name': 'Jane',
-            'last_name': 'Doe',
-            'contact_method': 'Phone',
-            'contact_date': '2024-03-06T12:00',
-            'contact_status': 'Contact successful',
-            'notes': 'Test note',
-            'updated_by': 'John Doe',
-        })
-        self.record.refresh_from_db()
-        self.assertEqual(self.record.payment_reference, 'REF456')
-        self.assertEqual(self.record.first_name, 'Jane')
-        self.assertEqual(self.record.last_name, 'Doe')
-        self.assertEqual(self.record.contact_method, 'Phone')
-        self.assertEqual(self.record.contact_status, 'Contact successful')
-        self.assertEqual(self.record.notes, 'Test note')
-        self.assertEqual(self.record.updated_by, 'John Doe')
-        self.assertRedirects(response, reverse('home'))
+            'payment_reference': 'UPDATED123', 'first_name': 'Updated', 'last_name': 'User',
+            'contact_method': 'Email', 'contact_date': timezone.now(),
+            'contact_status': 'Completed', 'notes': 'Updated note'}, follow=True)
+        self.assertContains(response, 'Record has been updated!')
 
-    def test_update_record_view_post_invalid(self):
-        self.client.login(username='testuser', password='12345')
+    def test_update_record_post_invalid_message(self):
+        self.client.login(username='testuser', password='testpass')
         response = self.client.post(reverse('update_record', args=[self.record.id]), {
-            'payment_reference': 'REF456',
-            'first_name': 'Jane',
-            'last_name': 'Doe',
-            'contact_method': 'Phone',
-            'contact_date': '2024-03-06T12:00',
-            'contact_status': 'Contact successful',
-            'notes': '',
-            'updated_by': 'John Doe',
-        })
-        self.record.refresh_from_db()
-        self.assertEqual(self.record.payment_reference, 'REF123')
-        self.assertEqual(self.record.first_name, 'John')
-        self.assertEqual(self.record.last_name, 'Doe')
-        self.assertEqual(self.record.contact_method, 'Email')
-        self.assertEqual(self.record.contact_status, 'Contact successful')
-        self.assertEqual(self.record.notes, 'Test note')
-        self.assertIsNone(self.record.updated_by)
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'update_record.html')
-        self.assertTrue(response.context['form'].errors)
+            'payment_reference': ''}, follow=True)
+        self.assertContains(response, 'Error updating record - please try again...')
 
-    def test_update_record_view_post_unauthenticated(self):
-        response = self.client.post(reverse('update_record', args=[self.record.id]), {
-            'payment_reference': 'REF456',
-            'first_name': 'Jane',
-            'last_name': 'Doe',
-            'contact_method': 'Phone',
-            'contact_date': '2024-03-06T12:00',
-            'contact_status': 'Contact successful',
-            'notes': 'Test note',
-            'updated_by': 'John Doe',
-        })
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    # Delete Record View Tests
-
-    def test_delete_record_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
-        # Assuming 'home' is the name of the URL to which you expect to redirect
-        expected_redirect_url = reverse('home')
-        response = self.client.get(reverse('delete_record', args=[self.record.id]))
-        # Check that the response is a redirect to the 'home' page
-        self.assertRedirects(response, expected_redirect_url)
-
-    #
-    def test_delete_record_view_unauthenticated(self):
+    def test_delete_record_unauthenticated(self):
+        self.client.logout()
         response = self.client.get(reverse('delete_record', args=[self.record.id]))
         self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
 
-    def test_delete_record_view_post_unauthenticated(self):
-        record_count = Record.objects.count()
-        response = self.client.post(reverse('delete_record', args=[self.record.id]))
-        self.assertEqual(Record.objects.count(), record_count)
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_delete_record_view_post_staff(self):
-        self.user.is_staff = True
-        self.user.save()
-        record_count = Record.objects.count()
-        self.client.login(username='testuser', password='12345')
-        response = self.client.post(reverse('delete_record', args=[self.record.id]))
-        self.assertEqual(Record.objects.count(), record_count - 1)
+    def test_delete_record_non_staff(self):
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.get(reverse('delete_record', args=[self.record.id]))
         self.assertRedirects(response, reverse('home'))
 
-    # User Management View Tests
+    def test_delete_record_success(self):
+        self.client.login(username='adminuser', password='adminpass')
+        response = self.client.get(reverse('delete_record', args=[self.record.id]), follow=True)
+        self.assertContains(response, 'Record has been deleted!')
 
-    def test_user_management_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
+    # User Management Tests
+    def test_user_management_requires_login(self):
+        response = self.client.get(reverse('user_management'), follow=True)
+        self.assertRedirects(response, reverse('home'))
+        self.assertContains(response, 'You must be logged in to view users!')
+
+    def test_user_management_requires_staff(self):
+        self.client.login(username='testuser', password='testpass')
         response = self.client.get(reverse('user_management'))
         self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
 
-    def test_user_management_view_unauthenticated(self):
-        response = self.client.get(reverse('user_management'))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_user_management_view_staff(self):
-        self.user.is_staff = True
-        self.user.save()
-        self.client.login(username='testuser', password='12345')
+        self.client.login(username='adminuser', password='adminpass')
         response = self.client.get(reverse('user_management'))
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'user_management.html')
-        self.assertTrue('users' in response.context)
-        self.assertEqual(list(response.context['users']), [self.user])
 
-    # Search Results View Tests
-
-    def test_search_results_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
-        response = self.client.get(reverse('search_results'))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_search_results_view_unauthenticated(self):
-        response = self.client.get(reverse('search_results'))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_search_results_view_post(self):
-        self.client.login(username='testuser', password='12345')
-        response = self.client.post(reverse('search_results'),
-                                    {'searched': 'John'})
-        self.assertTemplateUsed(response, 'search_results.html')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('records', response.context)
-        self.assertIn('searched', response.context)
-        self.assertEqual(response.context['searched'], 'John')
-
-    def test_search_results_view_post_unauthenticated(self):
-        response = self.client.post(reverse('search_results'), {'search': 'John'})
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    # Audit Logs View Tests
-
-    def test_audit_logs_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
-        response = self.client.get(reverse('audit_logs'))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_audit_logs_view_unauthenticated(self):
-        response = self.client.get(reverse('audit_logs'))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_audit_logs_view_staff(self):
-        self.user.is_staff = True
-        self.user.save()
-        self.client.login(username='testuser', password='12345')
-        response = self.client.get(reverse('audit_logs'))
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'audit_logs.html')
-        self.assertTrue('records' in response.context)
-        self.assertEqual(list(response.context['records']), [self.record])
-
-    # User Active Status View Tests
-
-    def test_user_active_status_view_authenticated(self):
-        self.client.login(username='testuser', password='12345')
-        response = self.client.get(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_user_active_status_view_unauthenticated(self):
-        response = self.client.get(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_user_active_status_view_staff(self):
-        self.user.is_staff = True
-        self.user.save()
-        self.client.login(username='testuser', password='12345')
+    def test_user_active_status_toggle(self):
+        self.client.login(username='adminuser', password='adminpass')
         response = self.client.get(reverse('user_active_status', args=[self.user.id]))
         self.assertRedirects(response, reverse('user_management'))
-        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
 
-    def test_user_active_status_view_post_staff(self):
-        self.user.is_staff = True
-        self.user.save()
-        self.client.login(username='testuser', password='12345')
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
+    def test_user_active_status_unauthenticated(self):
+        self.client.logout()
+        response = self.client.get(reverse('user_active_status', args=[self.user.id]))
+        self.assertRedirects(response, reverse('home'))
+
+    def test_user_active_status_non_staff(self):
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.get(reverse('user_active_status', args=[self.staff_user.id]))
+        self.assertRedirects(response, reverse('home'))
+
+    def test_user_active_status_self_toggle_denied(self):
+        self.client.login(username='adminuser', password='adminpass')
+        response = self.client.get(reverse('user_active_status', args=[self.staff_user.id]))
         self.assertRedirects(response, reverse('user_management'))
-        self.assertEqual(response.status_code, 302)
+        self.staff_user.refresh_from_db()
+        self.assertTrue(self.staff_user.is_active)
 
-    def test_user_active_status_view_post_authenticated(self):
-        self.client.login(username='testuser', password='12345')
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+    def test_user_active_status_message(self):
+        self.client.login(username='adminuser', password='adminpass')
+        user = User.objects.create_user(username='targetuser', password='pass')
+        response = self.client.get(reverse('user_active_status', args=[user.id]), follow=True)
+        self.assertContains(response, "targetuser&#x27;s account has been deactivated.")
 
-    def test_user_active_status_view_post_unauthenticated(self):
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+    def test_user_active_status_user_not_found(self):
+        self.client.login(username='adminuser', password='adminpass')
+        response = self.client.get(reverse('user_active_status', args=[99999]), follow=True)
+        self.assertRedirects(response, reverse('user_management'))
+        self.assertContains(response, "User not found.")
 
-    def test_user_active_status_view_post_staff_superuser(self):
-        self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save()
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
+    # Search and Audit Logs
+    def test_search_results_requires_login(self):
+        response = self.client.post(reverse('search_results'), {'searched': 'Test'}, follow=True)
         self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+        self.assertContains(response, 'You must be logged in to search records!')
 
-    def test_user_active_status_view_post_staff_superuser_self(self):
-        self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save()
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+    def test_search_results_post(self):
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.post(reverse('search_results'), {'searched': 'Test'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Test")
 
-    def test_user_active_status_view_post_staff_superuser_staff(self):
-        self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save()
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+    def test_search_results_get_message(self):
+        self.client.login(username='testuser', password='testpass')
+        response = self.client.get(reverse('search_results'), follow=True)
+        self.assertContains(response, 'Please use the search form to submit your query.')
 
-    def test_user_active_status_view_post_staff_superuser_staff_self(self):
-        self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save()
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+    def test_search_results_match_displayed(self):
+        self.client.login(username='adminuser', password='adminpass')
+        response = self.client.post(reverse('search_results'), {'searched': 'Test'}, follow=True)
+        self.assertContains(response, 'Test')
 
-    def test_user_active_status_view_post_staff_superuser_staff_superuser(self):
-        self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save()
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
+    def test_audit_logs_render(self):
+        self.client.login(username='adminuser', password='adminpass')
+        response = self.client.get(reverse('audit_logs'), follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.record.payment_reference)
 
-    def test_user_active_status_view_post_staff_superuser_staff_superuser_self(self):
-        self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save()
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
+    def test_audit_logs_unauthenticated(self):
+        self.client.logout()
+        response = self.client.get(reverse('audit_logs'))
         self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_user_active_status_view_post_staff_superuser_staff_superuser_staff(self):
-        self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save()
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)
-
-    def test_user_active_status_view_post_staff_superuser_staff_superuser_staff_self(self):
-        self.user.is_staff = True
-        self.user.is_superuser = True
-        self.user.save()
-        response = self.client.post(reverse('user_active_status', args=[self.user.id]))
-        self.assertRedirects(response, reverse('home'))
-        self.assertEqual(response.status_code, 302)

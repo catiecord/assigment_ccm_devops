@@ -1,5 +1,5 @@
 """
-WSGI config for assigment_ccm_project project.
+WSGI config for assignment_ccm_devops_project project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,6 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'assigment_ccm_project.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'assignment_ccm_devops_project.settings')
 
 application = get_wsgi_application()
