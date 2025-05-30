@@ -21,7 +21,7 @@
       {% if records %}
         {% for record in records %}
       <tr>
-          <td><a href="{%url 'payment_record' record.id %}">{{ record.payment_reference }}</a> </td>
+          <td><a href="{% url 'payment_record' record.id %}">{{ record.payment_reference }}</a> </td>
           <td>{{ record.first_name }} {{ record.last_name }}</td>
           <td>{{ record.contact_method }}</td>
           <td>{{ record.contact_date }}</td>

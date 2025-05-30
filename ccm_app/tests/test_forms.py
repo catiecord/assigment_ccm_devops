@@ -1,5 +1,5 @@
 from django.test import TestCase
-from ccm_app.forms import SignUpForm, AddRecordForm, UpdateRecordForm, RecordSearch , RecordForm
+from ccm_app.forms import SignUpForm, AddRecordForm, UpdateRecordForm, RecordSearch, RecordForm
 from django.contrib.auth.models import User
 from django import forms
 
@@ -25,17 +25,18 @@ class SignUpFormTest(TestCase):
         self.assertFalse(form.is_valid())
         self.assertEqual(len(form.errors), 6)
 
-    def test_clean_email(self):
+    def test_email_already_exists_validation_error(self):
+        User.objects.create_user(username='existinguser', email='existing@example.com', password='password123')
         form = SignUpForm(data={
-            'username': 'test_user',
-            'email': '',
+            'username': 'newuser',
+            'email': 'existing@example.com',
             'first_name': 'Test',
             'last_name': 'User',
-            'password1': 'password123',
-            'password2': 'password123'
+            'password1': 'password123.',
+            'password2': 'password123.'
         })
         self.assertFalse(form.is_valid())
-        self.assertEqual(form.errors['email'], ['This field is required.'])
+        self.assertEqual(form.errors['email'], ['Email address is already in use.'])
 
     def test_clean_username(self):
         form = SignUpForm(data={
@@ -61,18 +62,7 @@ class SignUpFormTest(TestCase):
         })
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors['username'], ['Username already exists.'])
-    def test_email_already_exists(self):
-        User.objects.create_user(username='existing_user', email='test@example.com', password='password123')
-        form = SignUpForm(data={
-            'username': 'new_user',
-            'email': 'test@example.com',  # same email as existing user
-            'first_name': 'Test',
-            'last_name': 'User',
-            'password1': 'password123.',
-            'password2': 'password123.'
-        })
-        self.assertFalse(form.is_valid())
-        self.assertEqual(form.errors['email'], ['Email address is already in use.'])
+
     def test_signup_form_email_already_exists(self):
         User.objects.create_user(username='existinguser', email='existing@example.com', password='password123')
         form = SignUpForm(data={
