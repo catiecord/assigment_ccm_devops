@@ -1,10 +1,14 @@
 import mysql.connector
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env
 
 # Connect to MySQL server
 dataBase = mysql.connector.connect(
-    host='localhost',
-    user='root',
-    passwd='password123'
+    host=os.environ.get('MYSQL_HOST', 'localhost'),
+    user=os.environ.get('MYSQL_USER', 'root'),
+    passwd=os.environ.get('MYSQL_PASSWORD', 'devpass')
 )
 
 # Create a cursor object
