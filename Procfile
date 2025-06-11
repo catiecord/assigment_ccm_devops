@@ -1,0 +1,1 @@
+web: gunicorn assignment_ccm_devops_project.wsgi
