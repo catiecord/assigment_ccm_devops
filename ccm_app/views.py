@@ -1,17 +1,15 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, get_user_model
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import User
-from .forms import SignUpForm, RecordForm, AddRecordForm, UpdateRecordForm
-from .models import Record, AuditLog
+from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
-from django.conf import settings
+from functools import wraps
+from .forms import SignUpForm, AddRecordForm, UpdateRecordForm
+from .models import Record, AuditLog
 
-import logging
-logger = logging.getLogger('audit')
-
+# ----------------------------
+# Custom decorators
+# ----------------------------
 
 def staff_required(view_func):
     return user_passes_test(
@@ -19,51 +17,50 @@ def staff_required(view_func):
         login_url='/login/'
     )(view_func)
 
+def login_required_message(message):
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                messages.error(request, message)
+                return redirect(f'/login/?next={request.path}')
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+    return decorator
+
 # ----------------------------
 # Authentication and Homepage
 # ----------------------------
 
 def login_view(request):
-    # Show messages based on the 'next' URL query parameter (if redirected due to login required)
-    next_url = request.GET.get('next')
-    if next_url and not request.user.is_authenticated:
-        if 'add_record' in next_url:
-            messages.info(request, 'You must be logged in to add records!')
-        elif 'search_results' in next_url:
-            messages.info(request, 'You must be logged in to search records!')
-        elif 'user_management' in next_url:
-            messages.info(request, 'You must be logged in to view users!')
-        # Add more cases here if needed
-
     if request.method == 'POST':
         username = request.POST.get('username')
         password = request.POST.get('password')
 
-        # Check if user exists first for better error messages
         try:
-            user = User.objects.get(username=username)
+            user_obj = User.objects.get(username=username)
         except User.DoesNotExist:
             messages.error(request, 'User does not exist.')
             return render(request, 'login.html')
 
-        # Authenticate user
+        # Check inactive before authenticate
+        if not user_obj.is_active:
+            messages.error(request, 'Account is inactive. Contact admin.')
+            return render(request, 'login.html')
+
         user = authenticate(request, username=username, password=password)
         if user:
-            if user.is_active:
-                login(request, user)
-                messages.success(request, 'You have been logged in!')
-                # Redirect to next if provided, else home
-                next_url = request.GET.get('next', 'home')
-                return redirect(next_url)
-            else:
-                messages.error(request, 'Account is inactive. Contact admin.')
+            login(request, user)
+            messages.success(request, 'You have been logged in!')
+            next_url = request.GET.get('next', 'home')
+            return redirect(next_url)
         else:
             messages.error(request, 'Incorrect password. Please try again.')
 
     return render(request, 'login.html')
 
 
-@login_required
+@login_required_message('You must be logged in to add records!')
 def home(request):
     records = Record.objects.all()
     return render(request, 'home.html', {'records': records})
@@ -72,7 +69,7 @@ def home(request):
 # User Registration and Logout
 # ----------------------------
 
-@login_required
+@login_required_message('You must be logged in to logout!')
 def logout_user(request):
     logout(request)
     messages.success(request, 'You have been logged out!')
@@ -98,6 +95,7 @@ def register_user(request):
             else:
                 messages.error(request, 'Failed to log in after registration.')
         else:
+            # Add error messages for form errors
             for field, errors in form.errors.items():
                 for error in errors:
                     messages.error(request, f"{field.capitalize()}: {error}")
@@ -110,12 +108,12 @@ def register_user(request):
 # Record Management
 # ----------------------------
 
-@login_required
+@login_required_message('You must be logged in to view payment records!')
 def payment_record(request, pk):
     pay_record = get_object_or_404(Record, id=pk)
     return render(request, 'record.html', {'record': pay_record})
 
-@login_required
+@login_required_message('You must be logged in to add records!')
 def add_record(request):
     if request.method == 'POST':
         form = AddRecordForm(request.POST)
@@ -138,10 +136,11 @@ def add_record(request):
         form = AddRecordForm()
     return render(request, 'add_record.html', {'form': form})
 
-@login_required
+
+@login_required_message('You must be logged in to update records!')
 def update_record(request, pk):
-    current_record = get_object_or_404(Record, id=pk)
-    form = UpdateRecordForm(request.POST or None, instance=current_record)
+    record = get_object_or_404(Record, id=pk)
+    form = UpdateRecordForm(request.POST or None, instance=record)
     if request.method == 'POST':
         if form.is_valid():
             updated_record = form.save(commit=False)
@@ -151,16 +150,16 @@ def update_record(request, pk):
             AuditLog.objects.create(
                 user=request.user,
                 action='UPDATE',
-                description=f"Updated record {current_record.payment_reference}"
+                description=f"Updated record {record.payment_reference}"
             )
-
             messages.success(request, 'Record has been updated!')
             return redirect('home')
         else:
             messages.error(request, 'Error updating record - please try again...')
     return render(request, 'update_record.html', {'form': form})
 
-@login_required
+@login_required_message('You must be logged in to delete records!')
+@staff_required
 def delete_record(request, pk):
     record = get_object_or_404(Record, pk=pk)
     if request.method == 'POST':
@@ -178,13 +177,13 @@ def delete_record(request, pk):
 # Admin & User Management
 # ----------------------------
 
-@login_required
+@login_required_message('You must be logged in to view users!')
 @staff_required
 def user_management(request):
     users = get_user_model().objects.all()
     return render(request, 'user_management.html', {'users': users})
 
-@login_required
+@login_required_message('You must be logged in to add records!')
 @staff_required
 def user_active_status(request, user_id):
     user_model = get_user_model()
@@ -198,6 +197,7 @@ def user_active_status(request, user_id):
         messages.error(request, "You cannot deactivate your own account!")
         return redirect("user_management")
 
+    # Toggle is_active boolean
     target_user.is_active = not target_user.is_active
     target_user.save()
 
@@ -215,7 +215,7 @@ def user_active_status(request, user_id):
 # Search and Audit Logs
 # ----------------------------
 
-@login_required
+@login_required_message('You must be logged in to search records!')
 def search_results(request):
     if request.method == 'POST':
         searched = request.POST.get('searched', '')
@@ -227,7 +227,7 @@ def search_results(request):
     messages.error(request, 'Please use the search form to submit your query.')
     return redirect('home')
 
-@login_required
+@login_required_message('You must be logged in to view audit logs!')
 @staff_required
 def audit_logs(request):
     logs = AuditLog.objects.order_by('-timestamp')

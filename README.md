@@ -103,7 +103,7 @@ This application includes the following OWASP Top 10 protections:
 - ✅ **CSRF Protection**: All forms use `{% csrf_token %}` to prevent CSRF attacks.
 - ✅ **Input Validation**: Custom field-level validation on names, emails, etc.
 - ✅ **XSS Protection**: All user output is escaped by default (no `|safe` used).
-- ✅ **Access Control**: `@login_required` and `is_staff` used for admin views.
+- ✅ **Access Control**: `@login_required_message` and `is_staff` used for admin views.
 
 Test cases and validation messages confirm these protections are effective.
 
