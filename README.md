@@ -12,10 +12,10 @@ The app includes secure user authentication, record creation and editing, audit 
 
 ---
 Source code :
-    [https://github.com/catiecord/assignment_ccm](https://github.com/catiecord/assignment_ccm)
+    [https://github.com/catiecord/assigment_ccm_devops](https://github.com/catiecord/assigment_ccm_devops)
 
 Working demonstration:
-    [https://catcord5.pythonanywhere.com/](https://catcord5.pythonanywhere.com/)
+    [https://ccm-devops-app-dee10a9354b1.herokuapp.com/](https://ccm-devops-app-dee10a9354b1.herokuapp.com/)
 
 ---
 
@@ -30,7 +30,7 @@ Working demonstration:
 
 ```bash
 # Clone the repository
-git clone https://github.com/catiecord/assignment_ccm.git
+git clone https://github.com/catiecord/assigment_ccm_devops
 cd assignment_ccm
 
 # Create and activate a virtual environment
