@@ -1,56 +1,79 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, get_user_model
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.models import User
-from .forms import SignUpForm, AddRecordForm, UpdateRecordForm, RecordForm
+from django.contrib import messages
+from django.contrib.auth.decorators import user_passes_test
+from functools import wraps
+from .forms import SignUpForm, AddRecordForm, UpdateRecordForm
 from .models import Record, AuditLog
 
-import logging
-logger = logging.getLogger('audit')
+# ----------------------------
+# Custom decorators
+# ----------------------------
+
+def staff_required(view_func):
+    return user_passes_test(
+        lambda u: u.is_authenticated and u.is_staff,
+        login_url='/login/'
+    )(view_func)
+
+def login_required_message(message):
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                messages.error(request, message)
+                return redirect(f'/login/?next={request.path}')
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+    return decorator
 
 # ----------------------------
 # Authentication and Homepage
 # ----------------------------
 
-def handle_login(request):
-    username = request.POST.get('username')
-    password = request.POST.get('password')
+def login_view(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
 
-    try:
-        user = User.objects.get(username=username)
-    except User.DoesNotExist:
-        messages.error(request, 'User does not exist.')
-        return redirect('home')
+        try:
+            user_obj = User.objects.get(username=username)
+        except User.DoesNotExist:
+            messages.error(request, 'User does not exist.')
+            return render(request, 'login.html')
 
-    if not user.is_active:
-        messages.error(request, 'Account is inactive. Contact admin.')
-        return redirect('home')
+        # Check inactive before authenticate
+        if not user_obj.is_active:
+            messages.error(request, 'Account is inactive. Contact admin.')
+            return render(request, 'login.html')
 
-    user = authenticate(request, username=username, password=password)
-    if user is not None:
-        login(request, user)
-        messages.success(request, 'You have been logged in!')
-    else:
-        messages.error(request, 'Incorrect password. Please try again.')
+        user = authenticate(request, username=username, password=password)
+        if user:
+            login(request, user)
+            messages.success(request, 'You have been logged in!')
+            next_url = request.GET.get('next', 'home')
+            return redirect(next_url)
+        else:
+            messages.error(request, 'Incorrect password. Please try again.')
 
-    return redirect('home')
+    return render(request, 'login.html')
 
+
+@login_required_message('You must be logged in to add records!')
 def home(request):
     records = Record.objects.all()
-    if request.method == 'POST':
-        return handle_login(request)
     return render(request, 'home.html', {'records': records})
 
 # ----------------------------
 # User Registration and Logout
 # ----------------------------
 
+@login_required_message('You must be logged in to logout!')
 def logout_user(request):
     logout(request)
     messages.success(request, 'You have been logged out!')
-    return redirect('home')
+    return redirect('login')
 
 def register_user(request):
     if request.method == 'POST':
@@ -72,6 +95,7 @@ def register_user(request):
             else:
                 messages.error(request, 'Failed to log in after registration.')
         else:
+            # Add error messages for form errors
             for field, errors in form.errors.items():
                 for error in errors:
                     messages.error(request, f"{field.capitalize()}: {error}")
@@ -84,15 +108,15 @@ def register_user(request):
 # Record Management
 # ----------------------------
 
-@login_required
+@login_required_message('You must be logged in to view payment records!')
 def payment_record(request, pk):
     pay_record = get_object_or_404(Record, id=pk)
     return render(request, 'record.html', {'record': pay_record})
 
-@login_required
+@login_required_message('You must be logged in to add records!')
 def add_record(request):
     if request.method == 'POST':
-        form = RecordForm(request.POST)
+        form = AddRecordForm(request.POST)
         if form.is_valid():
             record = form.save(commit=False)
             record.created_by = request.user
@@ -104,33 +128,38 @@ def add_record(request):
                 action='CREATE',
                 description=f"Created record {record.payment_reference}"
             )
-
-            return redirect('records_list')
+            messages.success(request, 'Record has been added!')
+            return redirect('home')
+        else:
+            messages.error(request, 'Error adding record - please try again...')
     else:
-        form = RecordForm()
+        form = AddRecordForm()
     return render(request, 'add_record.html', {'form': form})
 
-@login_required
+
+@login_required_message('You must be logged in to update records!')
 def update_record(request, pk):
-    current_record = get_object_or_404(Record, id=pk)
-    form = RecordForm(request.POST or None, instance=current_record)
+    record = get_object_or_404(Record, id=pk)
+    form = UpdateRecordForm(request.POST or None, instance=record)
     if request.method == 'POST':
         if form.is_valid():
-            form.save()
+            updated_record = form.save(commit=False)
+            updated_record.updated_by = request.user.username
+            updated_record.save()
 
             AuditLog.objects.create(
                 user=request.user,
                 action='UPDATE',
-                description=f"Updated record {current_record.payment_reference}"
+                description=f"Updated record {record.payment_reference}"
             )
-
             messages.success(request, 'Record has been updated!')
             return redirect('home')
         else:
             messages.error(request, 'Error updating record - please try again...')
     return render(request, 'update_record.html', {'form': form})
 
-@login_required
+@login_required_message('You must be logged in to delete records!')
+@staff_required
 def delete_record(request, pk):
     record = get_object_or_404(Record, pk=pk)
     if request.method == 'POST':
@@ -140,21 +169,22 @@ def delete_record(request, pk):
             description=f"Deleted record {record.payment_reference}"
         )
         record.delete()
-        return redirect('records_list')
+        messages.success(request, 'Record has been deleted!')
+        return redirect('home')
     return render(request, 'confirm_delete.html', {'record': record})
 
 # ----------------------------
 # Admin & User Management
 # ----------------------------
 
-@login_required
-@staff_member_required
+@login_required_message('You must be logged in to view users!')
+@staff_required
 def user_management(request):
     users = get_user_model().objects.all()
     return render(request, 'user_management.html', {'users': users})
 
-@login_required
-@staff_member_required
+@login_required_message('You must be logged in to add records!')
+@staff_required
 def user_active_status(request, user_id):
     user_model = get_user_model()
     try:
@@ -167,6 +197,7 @@ def user_active_status(request, user_id):
         messages.error(request, "You cannot deactivate your own account!")
         return redirect("user_management")
 
+    # Toggle is_active boolean
     target_user.is_active = not target_user.is_active
     target_user.save()
 
@@ -184,7 +215,7 @@ def user_active_status(request, user_id):
 # Search and Audit Logs
 # ----------------------------
 
-@login_required
+@login_required_message('You must be logged in to search records!')
 def search_results(request):
     if request.method == 'POST':
         searched = request.POST.get('searched', '')
@@ -196,7 +227,8 @@ def search_results(request):
     messages.error(request, 'Please use the search form to submit your query.')
     return redirect('home')
 
-@staff_member_required
+@login_required_message('You must be logged in to view audit logs!')
+@staff_required
 def audit_logs(request):
     logs = AuditLog.objects.order_by('-timestamp')
     return render(request, 'audit_logs.html', {'logs': logs})
