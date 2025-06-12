@@ -12,6 +12,7 @@
         <tr>
           <th scope="col">Payment Ref</th>
           <th scope="col">Name</th>
+          <th scope="col">Contact Date</th>
           <th scope="col">Status</th>
           <th scope="col">Actions</th>
         </tr>
@@ -21,6 +22,7 @@
           <tr>
             <td>{{ record.payment_reference }}</td>
             <td>{{ record.first_name }} {{ record.last_name }}</td>
+            <td>{{ record.contact_date|date:"Y-m-d H:i" }}</td>
             <td>{{ record.contact_status }}</td>
             <td>
               <a href="{% url 'payment_record' record.id %}" class="btn btn-primary btn-sm">View</a>
