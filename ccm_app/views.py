@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, get_user_model
+from django.contrib.auth.views import redirect_to_login
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
@@ -12,10 +13,16 @@ from .models import Record, AuditLog
 # ----------------------------
 
 def staff_required(view_func):
-    return user_passes_test(
-        lambda u: u.is_authenticated and u.is_staff,
-        login_url='/login/'
-    )(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            # Unauthenticated users → go to login
+            return redirect_to_login(request.get_full_path())
+        if not request.user.is_staff:
+            # Authenticated but not staff → show message + redirect home
+            messages.warning(request, "You must be an admin to access this page.")
+            return redirect('home')
+        return view_func(request, *args, **kwargs)
+    return _wrapped_view
 
 def login_required_message(message):
     def decorator(view_func):
@@ -158,8 +165,8 @@ def update_record(request, pk):
             messages.error(request, 'Error updating record - please try again...')
     return render(request, 'update_record.html', {'form': form})
 
-@login_required_message('You must be logged in to delete records!')
 @staff_required
+@login_required_message('You must be logged in to delete records!')
 def delete_record(request, pk):
     record = get_object_or_404(Record, pk=pk)
     if request.method == 'POST':
@@ -176,15 +183,14 @@ def delete_record(request, pk):
 # ----------------------------
 # Admin & User Management
 # ----------------------------
-
-@login_required_message('You must be logged in to view users!')
 @staff_required
+@login_required_message('You must be logged in to view users!')
 def user_management(request):
     users = get_user_model().objects.all()
     return render(request, 'user_management.html', {'users': users})
 
-@login_required_message('You must be logged in to add records!')
 @staff_required
+@login_required_message('You must be logged in to add records!')
 def user_active_status(request, user_id):
     user_model = get_user_model()
     try:
@@ -227,8 +233,8 @@ def search_results(request):
     messages.error(request, 'Please use the search form to submit your query.')
     return redirect('home')
 
-@login_required_message('You must be logged in to view audit logs!')
 @staff_required
+@login_required_message('You must be logged in to view audit logs!')
 def audit_logs(request):
     logs = AuditLog.objects.order_by('-timestamp')
     return render(request, 'audit_logs.html', {'logs': logs})

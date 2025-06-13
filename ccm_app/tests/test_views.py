@@ -144,9 +144,17 @@ class ViewTests(TestCase):
         self.assertContains(response, 'Error updating record - please try again...')
 
     def test_delete_record_non_staff(self):
-        self.client.login(username='testuser', password='testpass')
-        response = self.client.get(reverse('delete_record', args=[self.record.id]))
-        self.assertRedirects(response, f'/login/?next=/delete_record/{self.record.id}/')
+        non_staff_user = User.objects.create_user(
+            username='user2',
+            password='testpass123',
+            is_staff=False
+        )
+        self.client.login(username='user2', password='testpass123')
+        response = self.client.get(
+            reverse('delete_record', args=[self.record.id]), follow=True
+        )
+        self.assertRedirects(response, reverse('home'))
+        self.assertContains(response, "You must be an admin to access this page.")
 
     def test_delete_record_success(self):
         self.client.login(username='adminuser', password='adminpass')
@@ -154,18 +162,19 @@ class ViewTests(TestCase):
         self.assertContains(response, 'Record has been deleted!')
 
     # User Management Tests
-    def test_user_management_requires_login(self):
-        response = self.client.get(reverse('user_management'), follow=True)
-        self.assertRedirects(response, f'/login/?next={reverse("user_management")}')
-        self.assertContains(response, 'You must be logged in to view users!')
+    def test_user_management_redirects_non_staff(self):
+        non_staff_user = User.objects.create_user(
+            username='user3',
+            password='testpass123',
+            is_staff=False
+        )
+        self.client.login(username='user3', password='testpass123')
 
-    def test_user_management_requires_staff(self):
-        self.client.login(username='testuser', password='testpass')
-        response = self.client.get(reverse('user_management'))
-        self.assertRedirects(response, f'/login/?next={reverse("user_management")}')
-        self.client.login(username='adminuser', password='adminpass')
-        response = self.client.get(reverse('user_management'))
-        self.assertEqual(response.status_code, 200)
+        response = self.client.get(reverse('user_management'), follow=True)
+
+        self.assertRedirects(response, reverse('home'))
+        self.assertContains(response, "You must be an admin to access this page.")
+
 
     def test_user_active_status_toggle(self):
         self.client.login(username='adminuser', password='adminpass')
@@ -182,9 +191,18 @@ class ViewTests(TestCase):
         self.assertRedirects(response, f'/login/?next={reverse("user_active_status", args=[self.staff_user.id])}')
 
     def test_user_active_status_non_staff(self):
-        self.client.login(username='testuser', password='testpass')
-        response = self.client.get(reverse('user_active_status', args=[self.staff_user.id]))
-        self.assertRedirects(response, f'/login/?next={reverse("user_active_status", args=[self.staff_user.id])}')
+        non_staff_user = User.objects.create_user(
+            username='regularuser',
+            password='testpass123',
+            is_staff=False
+        )
+        self.client.login(username='regularuser', password='testpass123')
+        response = self.client.get(
+            reverse('user_active_status', args=[self.staff_user.id]),
+            follow=True
+        )
+        self.assertRedirects(response, reverse('home'))
+        self.assertContains(response, "You must be an admin to access this page.")
 
     def test_user_active_status_self_toggle_denied(self):
         self.client.login(username='adminuser', password='adminpass')
