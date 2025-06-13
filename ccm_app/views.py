@@ -158,8 +158,8 @@ def update_record(request, pk):
             messages.error(request, 'Error updating record - please try again...')
     return render(request, 'update_record.html', {'form': form})
 
-@login_required_message('You must be logged in to delete records!')
 @staff_required
+@login_required_message('You must be logged in to delete records!')
 def delete_record(request, pk):
     record = get_object_or_404(Record, pk=pk)
     if request.method == 'POST':
@@ -176,15 +176,14 @@ def delete_record(request, pk):
 # ----------------------------
 # Admin & User Management
 # ----------------------------
-
-@login_required_message('You must be logged in to view users!')
 @staff_required
+@login_required_message('You must be logged in to view users!')
 def user_management(request):
     users = get_user_model().objects.all()
     return render(request, 'user_management.html', {'users': users})
 
-@login_required_message('You must be logged in to add records!')
 @staff_required
+@login_required_message('You must be logged in to add records!')
 def user_active_status(request, user_id):
     user_model = get_user_model()
     try:
@@ -227,8 +226,8 @@ def search_results(request):
     messages.error(request, 'Please use the search form to submit your query.')
     return redirect('home')
 
-@login_required_message('You must be logged in to view audit logs!')
 @staff_required
+@login_required_message('You must be logged in to view audit logs!')
 def audit_logs(request):
     logs = AuditLog.objects.order_by('-timestamp')
     return render(request, 'audit_logs.html', {'logs': logs})
